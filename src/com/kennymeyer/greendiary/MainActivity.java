@@ -16,6 +16,8 @@ import android.view.Menu;
 import android.view.MenuInflater;
 import android.view.MenuItem;
 import android.view.View;
+import android.support.v4.widget.DrawerLayout;
+import android.support.v4.app.ActionBarDrawerToggle;
 import android.view.ViewGroup;
 import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
@@ -47,6 +49,10 @@ public class MainActivity extends Activity {
     private ArrayAdapter<String> listAdapter;
     private ArrayList<String> notesNames;
     private ProgressDialog progress;
+    private DrawerLayout mDrawerLayout;
+    private ActionBarDrawerToggle mDrawerToggle;
+    private CharSequence mDrawerTitle;
+    private CharSequence mTitle;
 
 	protected EvernoteSession mEvernoteSession;
     protected Notebook mDiaryNotebook;
@@ -61,8 +67,33 @@ public class MainActivity extends Activity {
         if (!mEvernoteSession.isLoggedIn()) {
             mEvernoteSession.authenticate(this);
         }
+
         notesNames = new ArrayList();
         notesListView = (ListView) findViewById( R.id.notesListView );
+
+        mTitle = mDrawerTitle = getTitle();
+        mDrawerLayout = (DrawerLayout) findViewById(R.id.drawer_layout);
+        mDrawerToggle = new ActionBarDrawerToggle(
+                this,                  /* host Activity */
+                mDrawerLayout,         /* DrawerLayout object */
+                R.drawable.ic_launcher,  /* nav drawer icon to replace 'Up' caret */
+                R.string.drawer_open,  /* "open drawer" description */
+                R.string.drawer_close  /* "close drawer" description */
+        ) {
+
+            /** Called when a drawer has settled in a completely closed state. */
+            public void onDrawerClosed(View view) {
+                getActionBar().setTitle(mTitle);
+            }
+
+            /** Called when a drawer has settled in a completely open state. */
+            public void onDrawerOpened(View drawerView) {
+                getActionBar().setTitle(mDrawerTitle);
+            }
+        };
+
+        // Set the drawer toggle as the DrawerListener
+        mDrawerLayout.setDrawerListener(mDrawerToggle);
 
         try{
             showLoadingSpinner();
@@ -72,6 +103,8 @@ public class MainActivity extends Activity {
             stopLoadingSpinner();
         }
 
+        getActionBar().setDisplayHomeAsUpEnabled(true);
+        getActionBar().setHomeButtonEnabled(true);
     }
 
     @Override
@@ -80,7 +113,19 @@ public class MainActivity extends Activity {
         getMenuInflater().inflate(R.menu.main, menu);
         return true;
     }
-    
+
+    @Override
+    public boolean onOptionsItemSelected(MenuItem item) {
+        // Pass the event to ActionBarDrawerToggle, if it returns
+        // true, then it has handled the app icon touch event
+        if (mDrawerToggle.onOptionsItemSelected(item)) {
+            return true;
+        }
+        // Handle your other action bar items...
+
+        return super.onOptionsItemSelected(item);
+    }
+
     @Override
     public void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
@@ -98,7 +143,7 @@ public class MainActivity extends Activity {
     public void showLoadingSpinner() {
         progress = new ProgressDialog(this);
         progress.setTitle("Loading");
-        progress.setMessage("Wait while loading...");
+        progress.setMessage("Loading diary entries...");
         progress.show();
     }
 
@@ -169,6 +214,40 @@ public class MainActivity extends Activity {
         listAdapter = new ArrayAdapter<String>(this, R.layout.note_row, notesNames);
 
         notesListView.setAdapter( listAdapter );
+        notesListView.setOnItemClickListener(new NotesListItemClickListener());
+
         stopLoadingSpinner();
+    }
+
+    private class NotesListItemClickListener implements ListView.OnItemClickListener {
+        @Override
+        public void onItemClick(AdapterView parent, View view, int position, long id) {
+            selectNote(position);
+        }
+    }
+
+    private void selectNote(int position) {
+        // Create a new fragment and specify the planet to show based on position
+        Fragment fragment = new NoteFragment();
+        Bundle args = new Bundle();
+        fragment.setArguments(args);
+
+        // Insert the fragment by replacing any existing fragment
+        FragmentManager fragmentManager = getFragmentManager();
+        fragmentManager.beginTransaction()
+                .replace(R.id.content_frame, fragment)
+                .commit();
+
+        // Highlight the selected item, update the title, and close the drawer
+        notesListView.setItemChecked(position, true);
+        setTitle(notesNames.get(position));
+        mDrawerLayout.closeDrawer(notesListView);
+    }
+
+
+    @Override
+    public void setTitle(CharSequence title) {
+        mTitle = title;
+        getActionBar().setTitle(mTitle);
     }
 }
