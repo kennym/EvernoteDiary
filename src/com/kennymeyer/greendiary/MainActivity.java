@@ -36,8 +36,10 @@ import com.evernote.edam.notestore.NoteFilter;
 import com.evernote.edam.notestore.NotesMetadataList;
 import com.evernote.edam.notestore.NotesMetadataResultSpec;
 import com.evernote.thrift.transport.TTransportException;
-import java.util.List;
-import java.util.ArrayList;
+
+import java.util.*;
+
+import android.widget.SimpleAdapter;
 
 
 public class MainActivity extends Activity {
@@ -46,8 +48,8 @@ public class MainActivity extends Activity {
 	private static final EvernoteSession.EvernoteService EVERNOTE_SERVICE = EvernoteSession.EvernoteService.SANDBOX;
 
     private ListView notesListView;
-    private ArrayAdapter<String> listAdapter;
-    private ArrayList<String> notesNames;
+    private SimpleAdapter listAdapter;
+    private List<Map<String, String>> notes;
     private ProgressDialog progress;
     private DrawerLayout mDrawerLayout;
     private ActionBarDrawerToggle mDrawerToggle;
@@ -68,7 +70,7 @@ public class MainActivity extends Activity {
             mEvernoteSession.authenticate(this);
         }
 
-        notesNames = new ArrayList();
+        notes = new ArrayList<Map<String, String>>();
         notesListView = (ListView) findViewById( R.id.notesListView );
 
         mTitle = mDrawerTitle = getTitle();
@@ -186,6 +188,7 @@ public class MainActivity extends Activity {
 
             NotesMetadataResultSpec spec = new NotesMetadataResultSpec();
             spec.setIncludeTitle(true);
+            spec.setIncludeCreated(true);
 
             int offset = 0;
             int pageSize = 40;
@@ -195,8 +198,20 @@ public class MainActivity extends Activity {
                 public void onSuccess(NotesMetadataList data) {
                     for (NoteMetadata note : data.getNotes()) {
                         String title = note.getTitle();
-                        notesNames.add(title);
+                        Long created_at = note.getCreated();
+                        Map<String, String> new_note = new HashMap<String, String>(2);
+                        new_note.put("title", title);
+                        new_note.put("created_at", created_at.toString());
+                        notes.add(new_note);
                     }
+
+                    // Sort the array items in descending order of created_at
+                    Collections.sort(notes, new Comparator<Map<String, String>>() {
+                        @Override
+                        public int compare(Map<String, String> first, Map<String, String> second) {
+                            return second.get("created_at").compareTo(first.get("created_at"));
+                        }
+                    });
 
                     renderNotesList();
                 }
@@ -211,7 +226,11 @@ public class MainActivity extends Activity {
     }
 
     public void renderNotesList() {
-        listAdapter = new ArrayAdapter<String>(this, R.layout.note_row, notesNames);
+        listAdapter = new SimpleAdapter(this, notes, R.layout.note_row, new String[] {
+                "title"
+            }, new int[] {
+                R.id.rowTextView
+            });
 
         notesListView.setAdapter( listAdapter );
         notesListView.setOnItemClickListener(new NotesListItemClickListener());
@@ -240,7 +259,7 @@ public class MainActivity extends Activity {
 
         // Highlight the selected item, update the title, and close the drawer
         notesListView.setItemChecked(position, true);
-        setTitle(notesNames.get(position));
+        setTitle(notes.get(position).get("title"));
         mDrawerLayout.closeDrawer(notesListView);
     }
 
