@@ -8,7 +8,6 @@ import android.app.ProgressDialog;
 import android.app.Fragment;
 import android.app.FragmentManager;
 import android.app.SearchManager;
-import android.content.Intent;
 import android.content.res.Configuration;
 import android.os.Bundle;
 import android.view.LayoutInflater;
@@ -199,7 +198,8 @@ public class MainActivity extends Activity {
                     for (NoteMetadata note : data.getNotes()) {
                         String title = note.getTitle();
                         Long created_at = note.getCreated();
-                        Map<String, String> new_note = new HashMap<String, String>(2);
+                        Map<String, String> new_note = new HashMap<String, String>(3);
+                        new_note.put("guid", note.getGuid());
                         new_note.put("title", title);
                         new_note.put("created_at", created_at.toString());
                         notes.add(new_note);
@@ -246,23 +246,40 @@ public class MainActivity extends Activity {
     }
 
     private void selectNote(int position) {
-        // Create a new fragment and specify the planet to show based on position
-        Fragment fragment = new NoteFragment();
-        Bundle args = new Bundle();
-        fragment.setArguments(args);
+        try {
+            showLoadingSpinner();
+            String guid = notes.get(position).get("guid");
+            mEvernoteSession.getClientFactory().createNoteStoreClient().getNote(guid, true, true, false, false, new OnClientCallback<Note>() {
+                @Override
+                public void onSuccess(Note note) {
+                    Fragment fragment = new NoteFragment();
+                    Bundle args = new Bundle();
+                    args.putString("content", note.getContent().toString());
+                    fragment.setArguments(args);
 
-        // Insert the fragment by replacing any existing fragment
-        FragmentManager fragmentManager = getFragmentManager();
-        fragmentManager.beginTransaction()
-                .replace(R.id.content_frame, fragment)
-                .commit();
+                    // Insert the fragment by replacing any existing fragment
+                    FragmentManager fragmentManager = getFragmentManager();
+                    fragmentManager.beginTransaction()
+                            .replace(R.id.content_frame, fragment)
+                            .commit();
 
-        // Highlight the selected item, update the title, and close the drawer
-        notesListView.setItemChecked(position, true);
-        setTitle(notes.get(position).get("title"));
-        mDrawerLayout.closeDrawer(notesListView);
+                    setTitle(note.getTitle());
+                    stopLoadingSpinner();
+                }
+
+                @Override
+                public void onException(Exception e) {
+                    Log.d("GreenDiary", "Oops");
+                }
+            });
+            // Highlight the selected item, update the title, and close the drawer
+            mDrawerLayout.closeDrawer(notesListView);
+            notesListView.setItemChecked(position, true);
+        } catch (TTransportException e) {
+            stopLoadingSpinner();
+            Toast.makeText(getApplicationContext(), "Error fetching note", Toast.LENGTH_LONG).show();
+        }
     }
-
 
     @Override
     public void setTitle(CharSequence title) {
