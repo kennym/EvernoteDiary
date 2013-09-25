@@ -1,5 +1,8 @@
 package com.kennymeyer.greendiary;
 
+import android.content.ContentValues;
+import android.database.Cursor;
+import android.database.sqlite.SQLiteDatabase;
 import android.os.Bundle;
 import android.app.Activity;
 import android.content.Intent;
@@ -7,26 +10,15 @@ import android.view.Menu;
 import android.app.ProgressDialog;
 import android.app.Fragment;
 import android.app.FragmentManager;
-import android.app.SearchManager;
-import android.content.res.Configuration;
-import android.os.Bundle;
-import android.view.LayoutInflater;
-import android.view.Menu;
-import android.view.MenuInflater;
 import android.view.MenuItem;
 import android.view.View;
 import android.support.v4.widget.DrawerLayout;
 import android.support.v4.app.ActionBarDrawerToggle;
-import android.view.ViewGroup;
 import android.widget.AdapterView;
-import android.widget.ArrayAdapter;
-import android.widget.ImageView;
 import android.widget.ListView;
 import android.widget.Toast;
-import android.text.TextUtils;
 import android.util.Log;
 import com.evernote.client.android.EvernoteSession;
-import com.evernote.client.android.EvernoteUtil;
 import com.evernote.client.android.OnClientCallback;
 import com.evernote.edam.type.Note;
 import com.evernote.edam.type.Notebook;
@@ -35,8 +27,10 @@ import com.evernote.edam.notestore.NoteFilter;
 import com.evernote.edam.notestore.NotesMetadataList;
 import com.evernote.edam.notestore.NotesMetadataResultSpec;
 import com.evernote.thrift.transport.TTransportException;
-
+import java.text.DateFormat;
+import java.text.SimpleDateFormat;
 import java.util.*;
+import com.kennymeyer.greendiary.NoteContract.NoteEntry;
 
 import android.widget.SimpleAdapter;
 
@@ -57,7 +51,7 @@ public class MainActivity extends Activity {
 
 	protected EvernoteSession mEvernoteSession;
     protected Notebook mDiaryNotebook;
-
+    protected NoteReaderDbHelper mDbHelper;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -68,6 +62,7 @@ public class MainActivity extends Activity {
         if (!mEvernoteSession.isLoggedIn()) {
             mEvernoteSession.authenticate(this);
         }
+
 
         notes = new ArrayList<Map<String, String>>();
         notesListView = (ListView) findViewById( R.id.notesListView );
@@ -96,12 +91,61 @@ public class MainActivity extends Activity {
         // Set the drawer toggle as the DrawerListener
         mDrawerLayout.setDrawerListener(mDrawerToggle);
 
-        try{
-            showLoadingSpinner();
-            listNotebooks();
-        } catch (TTransportException exception) {
-            Log.e("Error", "Error retrieving notebooks", exception);
-            stopLoadingSpinner();
+        mDbHelper = new NoteReaderDbHelper(getApplicationContext());
+        SQLiteDatabase mDbReadable = mDbHelper.getReadableDatabase();
+
+        String[] projection = {
+                NoteEntry.COLUMN_GUID,
+                NoteEntry.COLUMN_TITLE,
+                NoteEntry.COLUMN_CREATED_AT
+        };
+        String sortOrder = NoteEntry.COLUMN_CREATED_AT + " DESC";
+
+        Cursor c = mDbReadable.query(
+                NoteEntry.TABLE_NAME,
+                projection,
+                null,
+                null,
+                null,
+                null,
+                sortOrder
+        );
+        if (c.moveToFirst()) {
+            do {
+                Map<String, String> new_note = new HashMap<String, String>(3);
+
+                String guid = c.getString(0);
+                String title = c.getString(1);
+                String created_at = c.getString(2);
+
+                new_note.put("guid", guid);
+                new_note.put("title", title);
+                new_note.put("created_at", created_at);
+
+                notes.add(new_note);
+            } while(c.moveToNext());
+
+            // Sort the array items in descending order of created_at
+            Collections.sort(notes, new Comparator<Map<String, String>>() {
+                @Override
+                public int compare(Map<String, String> first, Map<String, String> second) {
+                return second.get("created_at").compareTo(first.get("created_at"));
+                }
+            });
+        }
+
+        c.close();
+
+        if (notes.isEmpty()) {
+            try{
+                showLoadingSpinner();
+                listNotebooks();
+            } catch (TTransportException exception) {
+                Log.e("Error", "Error retrieving notebooks", exception);
+                stopLoadingSpinner();
+            }
+        } else {
+            renderNotesList();
         }
 
         getActionBar().setDisplayHomeAsUpEnabled(true);
@@ -195,15 +239,31 @@ public class MainActivity extends Activity {
             mEvernoteSession.getClientFactory().createNoteStoreClient().findNotesMetadata(filter, offset, pageSize, spec, new OnClientCallback<NotesMetadataList>() {
                 @Override
                 public void onSuccess(NotesMetadataList data) {
+                    SQLiteDatabase mDbWritable = mDbHelper.getWritableDatabase();
                     for (NoteMetadata note : data.getNotes()) {
                         String title = note.getTitle();
-                        Long created_at = note.getCreated();
+                        String guid = note.getGuid();
+                        String created_at = String.valueOf(note.getCreated());
+
                         Map<String, String> new_note = new HashMap<String, String>(3);
-                        new_note.put("guid", note.getGuid());
+
+                        new_note.put("guid", guid);
                         new_note.put("title", title);
-                        new_note.put("created_at", created_at.toString());
+                        new_note.put("created_at", created_at);
+
+                        ContentValues values = new ContentValues();
+                        values.put(NoteContract.NoteEntry.COLUMN_GUID, guid);
+                        values.put(NoteContract.NoteEntry.COLUMN_TITLE, title);
+                        values.put(NoteContract.NoteEntry.COLUMN_CREATED_AT, created_at);
+
+                        mDbWritable.insert(
+                                NoteContract.NoteEntry.TABLE_NAME,
+                                NoteContract.NoteEntry.COLUMN_NAME_NULLABLE,
+                                values);
+
                         notes.add(new_note);
                     }
+                    mDbWritable.close();
 
                     // Sort the array items in descending order of created_at
                     Collections.sort(notes, new Comparator<Map<String, String>>() {
@@ -226,6 +286,15 @@ public class MainActivity extends Activity {
     }
 
     public void renderNotesList() {
+        // Add "Today" note
+        Map<String, String> new_note = new HashMap<String, String>(3);
+        DateFormat dateFormat = new SimpleDateFormat("E, MMM d, y");
+        Date date = new Date();
+        String title = "Today";
+        new_note.put("title", title);
+
+        notes.add(0, new_note);
+
         listAdapter = new SimpleAdapter(this, notes, R.layout.note_row, new String[] {
                 "title"
             }, new int[] {
@@ -246,39 +315,53 @@ public class MainActivity extends Activity {
     }
 
     private void selectNote(int position) {
-        try {
-            showLoadingSpinner();
-            String guid = notes.get(position).get("guid");
-            mEvernoteSession.getClientFactory().createNoteStoreClient().getNote(guid, true, true, false, false, new OnClientCallback<Note>() {
-                @Override
-                public void onSuccess(Note note) {
-                    Fragment fragment = new NoteFragment();
-                    Bundle args = new Bundle();
-                    args.putString("content", note.getContent().toString());
-                    fragment.setArguments(args);
+        if (position == 0) {  // Today note
+            Fragment fragment = new NoteFragment();
+            Bundle args = new Bundle();
+            fragment.setArguments(args);
 
-                    // Insert the fragment by replacing any existing fragment
-                    FragmentManager fragmentManager = getFragmentManager();
-                    fragmentManager.beginTransaction()
-                            .replace(R.id.content_frame, fragment)
-                            .commit();
+            // Insert the fragment by replacing any existing fragment
+            FragmentManager fragmentManager = getFragmentManager();
+            fragmentManager.beginTransaction()
+                    .replace(R.id.content_frame, fragment)
+                    .commit();
 
-                    setTitle(note.getTitle());
-                    stopLoadingSpinner();
-                }
+            setTitle(notes.get(0).get("title"));
+        } else {
+            try {
+                showLoadingSpinner();
+                String guid = notes.get(position).get("guid");
+                mEvernoteSession.getClientFactory().createNoteStoreClient().getNote(guid, true, true, false, false, new OnClientCallback<Note>() {
+                    @Override
+                    public void onSuccess(Note note) {
+                        Fragment fragment = new NoteFragment();
+                        Bundle args = new Bundle();
+                        args.putString("content", note.getContent().toString());
+                        fragment.setArguments(args);
 
-                @Override
-                public void onException(Exception e) {
-                    Log.d("GreenDiary", "Oops");
-                }
-            });
-            // Highlight the selected item, update the title, and close the drawer
-            mDrawerLayout.closeDrawer(notesListView);
-            notesListView.setItemChecked(position, true);
-        } catch (TTransportException e) {
-            stopLoadingSpinner();
-            Toast.makeText(getApplicationContext(), "Error fetching note", Toast.LENGTH_LONG).show();
+                        // Insert the fragment by replacing any existing fragment
+                        FragmentManager fragmentManager = getFragmentManager();
+                        fragmentManager.beginTransaction()
+                                .replace(R.id.content_frame, fragment)
+                                .commit();
+
+                        setTitle(note.getTitle());
+                        stopLoadingSpinner();
+                    }
+
+                    @Override
+                    public void onException(Exception e) {
+                        Log.d("GreenDiary", "Oops");
+                    }
+                });
+                // Highlight the selected item, update the title, and close the drawer
+            } catch (TTransportException e) {
+                stopLoadingSpinner();
+                Toast.makeText(getApplicationContext(), "Error fetching note", Toast.LENGTH_LONG).show();
+            }
         }
+        mDrawerLayout.closeDrawer(notesListView);
+        notesListView.setItemChecked(position, true);
     }
 
     @Override

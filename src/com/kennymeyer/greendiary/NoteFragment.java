@@ -22,7 +22,7 @@ public class NoteFragment extends Fragment {
         LinearLayout ll = (LinearLayout )inflater.inflate(R.layout.note_fragment, container, false);
         EditText note_content = (EditText) ll.findViewById(R.id.note_content);
 
-        String content = getArguments().getString("content", "Nothing");
+        String content = getArguments().getString("content", "");
 
         note_content.setText(Html.fromHtml(content));
 
