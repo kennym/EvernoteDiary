@@ -91,50 +91,60 @@ public class MainActivity extends Activity {
         // Set the drawer toggle as the DrawerListener
         mDrawerLayout.setDrawerListener(mDrawerToggle);
 
-        mDbHelper = new NoteReaderDbHelper(getApplicationContext());
-        SQLiteDatabase mDbReadable = mDbHelper.getReadableDatabase();
 
-        String[] projection = {
-                NoteEntry.COLUMN_GUID,
-                NoteEntry.COLUMN_TITLE,
-                NoteEntry.COLUMN_CREATED_AT
-        };
-        String sortOrder = NoteEntry.COLUMN_CREATED_AT + " DESC";
+        try {
+            mDbHelper = new NoteReaderDbHelper(getApplicationContext());
+            SQLiteDatabase mDbReadable = mDbHelper.getReadableDatabase();
 
-        Cursor c = mDbReadable.query(
-                NoteEntry.TABLE_NAME,
-                projection,
-                null,
-                null,
-                null,
-                null,
-                sortOrder
-        );
-        if (c.moveToFirst()) {
-            do {
-                Map<String, String> new_note = new HashMap<String, String>(3);
+            Log.v("GreenDiary", "Loaded database...");
 
-                String guid = c.getString(0);
-                String title = c.getString(1);
-                String created_at = c.getString(2);
+            String[] projection = {
+                    NoteEntry.COLUMN_GUID,
+                    NoteEntry.COLUMN_TITLE,
+                    NoteEntry.COLUMN_CREATED_AT
+            };
+            String sortOrder = NoteEntry.COLUMN_CREATED_AT + " DESC";
 
-                new_note.put("guid", guid);
-                new_note.put("title", title);
-                new_note.put("created_at", created_at);
+            Cursor c = mDbReadable.query(
+                    NoteEntry.TABLE_NAME,
+                    projection,
+                    null,
+                    null,
+                    null,
+                    null,
+                    sortOrder
+            );
 
-                notes.add(new_note);
-            } while(c.moveToNext());
 
-            // Sort the array items in descending order of created_at
-            Collections.sort(notes, new Comparator<Map<String, String>>() {
-                @Override
-                public int compare(Map<String, String> first, Map<String, String> second) {
-                return second.get("created_at").compareTo(first.get("created_at"));
-                }
-            });
+            if (c.moveToFirst()) {
+                do {
+                    Map<String, String> new_note = new HashMap<String, String>(3);
+
+                    String guid = c.getString(0);
+                    String title = c.getString(1);
+                    String created_at = c.getString(2);
+
+                    new_note.put("guid", guid);
+                    new_note.put("title", title);
+                    new_note.put("created_at", created_at);
+
+                    notes.add(new_note);
+                } while(c.moveToNext());
+
+                // Sort the array items in descending order of created_at
+                Collections.sort(notes, new Comparator<Map<String, String>>() {
+                    @Override
+                    public int compare(Map<String, String> first, Map<String, String> second) {
+                        return second.get("created_at").compareTo(first.get("created_at"));
+                    }
+                });
+            }
+
+            c.close();
+
+        } catch (Exception e) {
+            Log.e("GreenDiary", e.toString());
         }
-
-        c.close();
 
         if (notes.isEmpty()) {
             try{

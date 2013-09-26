@@ -18,7 +18,7 @@ public class NoteReaderDbHelper extends SQLiteOpenHelper {
                     NoteEntry.COLUMN_GUID + TEXT_TYPE + UNIQUE + COMMA_SEP +
                     NoteEntry.COLUMN_TITLE + TEXT_TYPE + COMMA_SEP +
                     NoteEntry.COLUMN_CONTENT + TEXT_TYPE + COMMA_SEP +
-                    NoteEntry.COLUMN_CREATED_AT + TEXT_TYPE + COMMA_SEP +
+                    NoteEntry.COLUMN_CREATED_AT + TEXT_TYPE +
                     " )";
 
     private static final String SQL_DELETE_ENTRIES =
