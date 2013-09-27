@@ -203,7 +203,7 @@ public class MainActivity extends Activity {
     }
 
     public void stopLoadingSpinner() {
-        progress.dismiss();
+        if (progress != null) progress.dismiss();
     }
 
     public void listNotebooks() throws TTransportException {
@@ -298,14 +298,12 @@ public class MainActivity extends Activity {
     public void renderNotesList() {
         // Add "Today" note
         Map<String, String> new_note = new HashMap<String, String>(3);
-        DateFormat dateFormat = new SimpleDateFormat("E, MMM d, y");
-        Date date = new Date();
         String title = "Today";
         new_note.put("title", title);
 
         notes.add(0, new_note);
 
-        listAdapter = new SimpleAdapter(this, notes, R.layout.note_row, new String[] {
+        listAdapter = new SimpleAdapter(getBaseContext(), notes, R.layout.note_row, new String[] {
                 "title"
             }, new int[] {
                 R.id.rowTextView
