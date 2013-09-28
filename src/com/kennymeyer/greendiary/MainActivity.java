@@ -28,6 +28,7 @@ import com.evernote.edam.notestore.NotesMetadataList;
 import com.evernote.edam.notestore.NotesMetadataResultSpec;
 import com.evernote.thrift.transport.TTransportException;
 import java.text.DateFormat;
+import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.*;
 import com.kennymeyer.greendiary.NoteContract.NoteEntry;
@@ -283,6 +284,7 @@ public class MainActivity extends Activity {
                         }
                     });
 
+                    stopLoadingSpinner();
                     renderNotesList();
                 }
 
@@ -298,7 +300,9 @@ public class MainActivity extends Activity {
     public void renderNotesList() {
         // Add "Today" note
         Map<String, String> new_note = new HashMap<String, String>(3);
-        String title = "Today";
+
+        DateFormat dateFormat = new SimpleDateFormat("E, MMM d");
+        String title = dateFormat.format(new Date());
         new_note.put("title", title);
 
         notes.add(0, new_note);
@@ -311,8 +315,6 @@ public class MainActivity extends Activity {
 
         notesListView.setAdapter( listAdapter );
         notesListView.setOnItemClickListener(new NotesListItemClickListener());
-
-        stopLoadingSpinner();
     }
 
     private class NotesListItemClickListener implements ListView.OnItemClickListener {
