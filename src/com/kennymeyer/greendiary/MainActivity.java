@@ -297,15 +297,46 @@ public class MainActivity extends Activity {
         }
     }
 
+    private Date getStartOfDay(Date date) {
+        Calendar calendar = Calendar.getInstance();
+        int year = calendar.get(Calendar.YEAR);
+        int month = calendar.get(Calendar.MONTH);
+        int day = calendar.get(Calendar.DATE);
+        calendar.set(year, month, day, 0, 0, 0);
+        return calendar.getTime();
+    }
+
+    private boolean noteCreatedToday(Date date) {
+        Date startOfDay = getStartOfDay(new Date());
+        // Check if
+        if (date.after(startOfDay) && date.before(new Date())) {
+            return true;
+        } else {
+            return false;
+        }
+    }
+
+    /* Creates or uses existing note from today's date */
+    public void addTodayNote() {
+        Date created_at = new Date(Long.valueOf(notes.get(0).get("created_at")));
+
+        if (noteCreatedToday(created_at)) {
+            // Do nothing
+        } else {
+            Map<String, String> new_note = new HashMap<String, String>(3);
+
+            DateFormat dateFormat = new SimpleDateFormat("E, MMM d");
+            String title = dateFormat.format(new Date());
+            new_note.put("title", title);
+
+            notes.add(0, new_note);
+        }
+    }
+
     public void renderNotesList() {
-        // Add "Today" note
-        Map<String, String> new_note = new HashMap<String, String>(3);
-
-        DateFormat dateFormat = new SimpleDateFormat("E, MMM d");
-        String title = dateFormat.format(new Date());
-        new_note.put("title", title);
-
-        notes.add(0, new_note);
+        if (!notes.isEmpty()) {
+            addTodayNote();
+        }
 
         listAdapter = new SimpleAdapter(getBaseContext(), notes, R.layout.note_row, new String[] {
                 "title"
@@ -378,5 +409,9 @@ public class MainActivity extends Activity {
     public void setTitle(CharSequence title) {
         mTitle = title;
         getActionBar().setTitle(mTitle);
+    }
+
+    public void syncNote() {
+
     }
 }

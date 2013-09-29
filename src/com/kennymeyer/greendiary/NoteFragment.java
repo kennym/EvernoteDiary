@@ -1,8 +1,10 @@
 package com.kennymeyer.greendiary;
 
+import android.app.Activity;
 import android.os.Bundle;
 import android.app.Fragment;
 import android.text.Html;
+import android.util.Log;
 import android.view.*;
 import android.widget.EditText;
 import android.widget.LinearLayout;
@@ -53,7 +55,34 @@ public class NoteFragment extends Fragment {
     }
 
     /* Sync note with Evernote */
-    public void syncNote() {
-        // TODO:
+    public void syncNote() throws TTransportException {
+        MainActivity activity = ((MainActivity) getActivity());
+
+        String noteBody = noteContentView.getText().toString();
+
+        String nBody = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>";
+        nBody += "<!DOCTYPE en-note SYSTEM \"http://xml.evernote.com/pub/enml2.dtd\">";
+        nBody += "<en-note>" + noteBody + "</en-note>";
+
+        Note newNote = new Note();
+        newNote.setTitle(activity.getActionBar().getTitle().toString());
+        newNote.setContent(nBody);
+
+        if (activity.mDiaryNotebook != null && activity.mDiaryNotebook.isSetGuid()) {
+            newNote.setNotebookGuid(activity.mDiaryNotebook.getGuid());
+        }
+
+        Note note = null;
+        activity.mEvernoteSession.getClientFactory().createNoteStoreClient().createNote(newNote, new OnClientCallback<Note>() {
+            @Override
+            public void onSuccess(Note note) {
+                // TODO:
+            }
+
+            @Override
+            public void onException(Exception e) {
+                Log.e("GreenDiary", "Exception ocurred");
+            }
+        });
     }
 }
