@@ -3,6 +3,8 @@ package com.kennymeyer.greendiary;
 import android.app.Activity;
 import android.os.Bundle;
 import android.app.Fragment;
+import android.support.v4.app.ActionBarDrawerToggle;
+import android.support.v4.widget.DrawerLayout;
 import android.text.Html;
 import android.util.Log;
 import android.view.*;
@@ -18,6 +20,8 @@ public class NoteFragment extends Fragment {
 
     protected String noteGuid;
     protected EditText noteContentView;
+    protected MainActivity activity;
+
 
     @Override
     public View onCreateView(LayoutInflater inflater, ViewGroup container,
@@ -38,25 +42,32 @@ public class NoteFragment extends Fragment {
     }
 
     @Override
-    public void onCreateOptionsMenu(Menu menu, MenuInflater inflater) {
-        inflater.inflate(R.menu.note_detail_menu, menu);
-    }
-
-    @Override
     public boolean onOptionsItemSelected(MenuItem item) {
         // handle item selection
         switch (item.getItemId()) {
-            case R.id.action_sync:
-                syncNote();
+            case R.id.action_save:
+                try {
+                    saveNote();
+                } catch (TTransportException e) {
+                    Log.e("GreenDiary", "Received exception: ");
+                    Log.e("GreenDiary", e.toString());
+                }
                 return true;
             default:
                 return super.onOptionsItemSelected(item);
         }
     }
 
+    @Override
+    public void onPrepareOptionsMenu(Menu menu) {
+        // If the nav drawer is open, hide action items related to the content view
+        menu.findItem(R.id.action_sync).setVisible(false);
+        menu.findItem(R.id.action_save).setVisible(true);
+    }
+
     /* Sync note with Evernote */
-    public void syncNote() throws TTransportException {
-        MainActivity activity = ((MainActivity) getActivity());
+    public void saveNote() throws TTransportException {
+        final MainActivity activity = ((MainActivity) getActivity());
 
         String noteBody = noteContentView.getText().toString();
 
@@ -72,11 +83,12 @@ public class NoteFragment extends Fragment {
             newNote.setNotebookGuid(activity.mDiaryNotebook.getGuid());
         }
 
-        Note note = null;
         activity.mEvernoteSession.getClientFactory().createNoteStoreClient().createNote(newNote, new OnClientCallback<Note>() {
             @Override
             public void onSuccess(Note note) {
-                // TODO:
+                activity.showLoadingSpinner();
+                activity.addNote(note);
+                activity.stopLoadingSpinner();
             }
 
             @Override
@@ -84,5 +96,6 @@ public class NoteFragment extends Fragment {
                 Log.e("GreenDiary", "Exception ocurred");
             }
         });
+
     }
 }

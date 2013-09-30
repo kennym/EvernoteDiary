@@ -6,6 +6,7 @@ import android.database.sqlite.SQLiteDatabase;
 import android.os.Bundle;
 import android.app.Activity;
 import android.content.Intent;
+import android.os.Handler;
 import android.view.Menu;
 import android.app.ProgressDialog;
 import android.app.Fragment;
@@ -28,7 +29,6 @@ import com.evernote.edam.notestore.NotesMetadataList;
 import com.evernote.edam.notestore.NotesMetadataResultSpec;
 import com.evernote.thrift.transport.TTransportException;
 import java.text.DateFormat;
-import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.*;
 import com.kennymeyer.greendiary.NoteContract.NoteEntry;
@@ -45,10 +45,10 @@ public class MainActivity extends Activity {
     private SimpleAdapter listAdapter;
     private List<Map<String, String>> notes;
     private ProgressDialog progress;
-    private DrawerLayout mDrawerLayout;
+    protected DrawerLayout mDrawerLayout;
     private ActionBarDrawerToggle mDrawerToggle;
-    private CharSequence mDrawerTitle;
-    private CharSequence mTitle;
+    protected CharSequence mDrawerTitle;
+    protected CharSequence mTitle;
 
 	protected EvernoteSession mEvernoteSession;
     protected Notebook mDiaryNotebook;
@@ -81,18 +81,82 @@ public class MainActivity extends Activity {
             /** Called when a drawer has settled in a completely closed state. */
             public void onDrawerClosed(View view) {
                 getActionBar().setTitle(mTitle);
+                invalidateOptionsMenu(); // creates call to onPrepareOptionsMenu()
             }
 
             /** Called when a drawer has settled in a completely open state. */
             public void onDrawerOpened(View drawerView) {
                 getActionBar().setTitle(mDrawerTitle);
+                invalidateOptionsMenu(); // creates call to onPrepareOptionsMenu()
             }
         };
 
         // Set the drawer toggle as the DrawerListener
         mDrawerLayout.setDrawerListener(mDrawerToggle);
 
+        getNotesFromDatabase();
 
+        if (notes.isEmpty()) {
+            try{
+                listNotebooks();
+                renderNotesList();
+            } catch (TTransportException exception) {
+                Log.e("Error", "Error retrieving notebooks", exception);
+                stopLoadingSpinner();
+            }
+        } else {
+            renderNotesList();
+        }
+
+        getActionBar().setDisplayHomeAsUpEnabled(true);
+        getActionBar().setHomeButtonEnabled(true);
+    }
+
+    @Override
+    public boolean onCreateOptionsMenu(Menu menu) {
+        // Inflate the menu; this adds items to the action bar if it is present.
+        getMenuInflater().inflate(R.menu.menu, menu);
+        return true;
+    }
+
+    @Override
+    public boolean onOptionsItemSelected(MenuItem item) {
+        // Pass the event to ActionBarDrawerToggle, if it returns
+        // true, then it has handled the app icon touch event
+        switch (item.getItemId()) {
+            case R.id.action_sync:
+                syncNotes();
+                return true;
+            default:
+                return super.onOptionsItemSelected(item);
+        }
+    }
+
+    /* Called whenever we call invalidateOptionsMenu() */
+    @Override
+    public boolean onPrepareOptionsMenu(Menu menu) {
+        // If the nav drawer is open, hide action items related to the content view
+        boolean drawerOpen = mDrawerLayout.isDrawerOpen(notesListView);
+        menu.findItem(R.id.action_sync).setVisible(true);
+        menu.findItem(R.id.action_save).setVisible(false);
+        return super.onPrepareOptionsMenu(menu);
+    }
+
+    @Override
+    public void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        switch(requestCode) {
+            case EvernoteSession.REQUEST_CODE_OAUTH:
+                if (resultCode == Activity.RESULT_OK) {
+                    setContentView(R.layout.activity_main);
+                }
+                break;
+            default:
+                break;
+        }
+    }
+
+    public void getNotesFromDatabase() {
         try {
             mDbHelper = new NoteReaderDbHelper(getApplicationContext());
             SQLiteDatabase mDbReadable = mDbHelper.getReadableDatabase();
@@ -132,13 +196,7 @@ public class MainActivity extends Activity {
                     notes.add(new_note);
                 } while(c.moveToNext());
 
-                // Sort the array items in descending order of created_at
-                Collections.sort(notes, new Comparator<Map<String, String>>() {
-                    @Override
-                    public int compare(Map<String, String> first, Map<String, String> second) {
-                        return second.get("created_at").compareTo(first.get("created_at"));
-                    }
-                });
+                sortNotes();
             }
 
             c.close();
@@ -146,55 +204,48 @@ public class MainActivity extends Activity {
         } catch (Exception e) {
             Log.e("GreenDiary", e.toString());
         }
+    }
 
-        if (notes.isEmpty()) {
-            try{
-                showLoadingSpinner();
-                listNotebooks();
-            } catch (TTransportException exception) {
-                Log.e("Error", "Error retrieving notebooks", exception);
+    /* Adds note to database */
+    public void addNote(Note note) {
+        SQLiteDatabase mDbWritable = mDbHelper.getWritableDatabase();
+        String title = note.getTitle();
+        String guid = note.getGuid();
+        String created_at = String.valueOf(note.getCreated());
+
+        Map<String, String> new_note = new HashMap<String, String>(3);
+
+        new_note.put("guid", guid);
+        new_note.put("title", title);
+        new_note.put("created_at", created_at);
+
+        ContentValues values = new ContentValues();
+        values.put(NoteContract.NoteEntry.COLUMN_GUID, guid);
+        values.put(NoteContract.NoteEntry.COLUMN_TITLE, title);
+        values.put(NoteContract.NoteEntry.COLUMN_CREATED_AT, created_at);
+
+        mDbWritable.insert(
+                NoteContract.NoteEntry.TABLE_NAME,
+                NoteContract.NoteEntry.COLUMN_NAME_NULLABLE,
+                values);
+
+        notes.add(new_note);
+        mDbWritable.close();
+
+        sortNotes();
+    }
+
+    /* Override sync notes from Evernote */
+    public void syncNotes() {
+        showLoadingSpinner();
+        Handler handler = new Handler();
+        handler.postDelayed(new Runnable() {
+            public void run() {
                 stopLoadingSpinner();
             }
-        } else {
-            renderNotesList();
-        }
-
-        getActionBar().setDisplayHomeAsUpEnabled(true);
-        getActionBar().setHomeButtonEnabled(true);
+        }, 2000);
     }
 
-    @Override
-    public boolean onCreateOptionsMenu(Menu menu) {
-        // Inflate the menu; this adds items to the action bar if it is present.
-        getMenuInflater().inflate(R.menu.main, menu);
-        return true;
-    }
-
-    @Override
-    public boolean onOptionsItemSelected(MenuItem item) {
-        // Pass the event to ActionBarDrawerToggle, if it returns
-        // true, then it has handled the app icon touch event
-        if (mDrawerToggle.onOptionsItemSelected(item)) {
-            return true;
-        }
-        // Handle your other action bar items...
-
-        return super.onOptionsItemSelected(item);
-    }
-
-    @Override
-    public void onActivityResult(int requestCode, int resultCode, Intent data) {
-        super.onActivityResult(requestCode, resultCode, data);
-        switch(requestCode) {
-            case EvernoteSession.REQUEST_CODE_OAUTH:
-                if (resultCode == Activity.RESULT_OK) {
-                    setContentView(R.layout.activity_main);
-                }
-                break;
-            default:
-                break;
-        }
-    }
 
     public void showLoadingSpinner() {
         progress = new ProgressDialog(this);
@@ -209,6 +260,7 @@ public class MainActivity extends Activity {
 
     public void listNotebooks() throws TTransportException {
         if (mEvernoteSession.isLoggedIn()) {
+            showLoadingSpinner();
             mEvernoteSession.getClientFactory().createNoteStoreClient().listNotebooks(new OnClientCallback<List<Notebook>>() {
                 @Override
                 public void onSuccess(final List<Notebook> notebooks) {
@@ -235,6 +287,16 @@ public class MainActivity extends Activity {
         }
     }
 
+    public void sortNotes() {
+        // Sort the array items in descending order of created_at
+        Collections.sort(notes, new Comparator<Map<String, String>>() {
+            @Override
+            public int compare(Map<String, String> first, Map<String, String> second) {
+                return second.get("created_at").compareTo(first.get("created_at"));
+            }
+        });
+    }
+
     public void getNotes() throws TTransportException {
         if (mEvernoteSession.isLoggedIn()) {
             NoteFilter filter = new NoteFilter();
@@ -252,40 +314,18 @@ public class MainActivity extends Activity {
                 public void onSuccess(NotesMetadataList data) {
                     SQLiteDatabase mDbWritable = mDbHelper.getWritableDatabase();
                     for (NoteMetadata note : data.getNotes()) {
-                        String title = note.getTitle();
-                        String guid = note.getGuid();
-                        String created_at = String.valueOf(note.getCreated());
+                        Note note_ = new Note();
+                        note_.setTitle(note.getTitle());
+                        note_.setGuid(note.getGuid());
+                        note_.setCreated(note.getCreated());
 
-                        Map<String, String> new_note = new HashMap<String, String>(3);
-
-                        new_note.put("guid", guid);
-                        new_note.put("title", title);
-                        new_note.put("created_at", created_at);
-
-                        ContentValues values = new ContentValues();
-                        values.put(NoteContract.NoteEntry.COLUMN_GUID, guid);
-                        values.put(NoteContract.NoteEntry.COLUMN_TITLE, title);
-                        values.put(NoteContract.NoteEntry.COLUMN_CREATED_AT, created_at);
-
-                        mDbWritable.insert(
-                                NoteContract.NoteEntry.TABLE_NAME,
-                                NoteContract.NoteEntry.COLUMN_NAME_NULLABLE,
-                                values);
-
-                        notes.add(new_note);
+                        addNote(note_);
                     }
                     mDbWritable.close();
 
-                    // Sort the array items in descending order of created_at
-                    Collections.sort(notes, new Comparator<Map<String, String>>() {
-                        @Override
-                        public int compare(Map<String, String> first, Map<String, String> second) {
-                            return second.get("created_at").compareTo(first.get("created_at"));
-                        }
-                    });
+                    sortNotes();
 
                     stopLoadingSpinner();
-                    renderNotesList();
                 }
 
                 @Override
@@ -356,7 +396,7 @@ public class MainActivity extends Activity {
     }
 
     private void selectNote(int position) {
-        if (position == 0) {  // Today note
+        if (position == 0 && notes.get(position).get("guid") == null) {  // Today note
             Fragment fragment = new NoteFragment();
             Bundle args = new Bundle();
             fragment.setArguments(args);
