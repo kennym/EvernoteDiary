@@ -6,7 +6,7 @@ public class NoteContract {
     public NoteContract() {}
 
     public static abstract class NoteEntry implements BaseColumns {
-        public static final String TABLE_NAME = "note";
+        public static final String TABLE_NAME = "notes";
         public static final String COLUMN_GUID = "guid";
         public static final String COLUMN_TITLE = "title";
         public static final String COLUMN_CONTENT = "content";

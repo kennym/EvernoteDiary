@@ -13,8 +13,6 @@ import android.app.Fragment;
 import android.app.FragmentManager;
 import android.view.MenuItem;
 import android.view.View;
-import android.support.v4.widget.DrawerLayout;
-import android.support.v4.app.ActionBarDrawerToggle;
 import android.widget.AdapterView;
 import android.widget.ListView;
 import android.widget.Toast;
@@ -36,23 +34,11 @@ import com.kennymeyer.greendiary.NoteContract.NoteEntry;
 import android.widget.SimpleAdapter;
 
 
-public class MainActivity extends Activity {
-	private static final String CONSUMER_KEY = "kennymeyer-7705";
-	private static final String CONSUMER_SECRET = "4ef2aa3a5e4dc2eb";
-	private static final EvernoteSession.EvernoteService EVERNOTE_SERVICE = EvernoteSession.EvernoteService.SANDBOX;
-
-    private ListView notesListView;
+public class MainActivity extends BaseActivity {
+    protected ListView notesListView;
     private SimpleAdapter listAdapter;
-    private List<Map<String, String>> notes;
     private ProgressDialog progress;
-    protected DrawerLayout mDrawerLayout;
-    private ActionBarDrawerToggle mDrawerToggle;
-    protected CharSequence mDrawerTitle;
     protected CharSequence mTitle;
-
-	protected EvernoteSession mEvernoteSession;
-    protected Notebook mDiaryNotebook;
-    protected NoteReaderDbHelper mDbHelper;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -64,35 +50,8 @@ public class MainActivity extends Activity {
             mEvernoteSession.authenticate(this);
         }
 
-
         notes = new ArrayList<Map<String, String>>();
         notesListView = (ListView) findViewById( R.id.notesListView );
-
-        mTitle = mDrawerTitle = getTitle();
-        mDrawerLayout = (DrawerLayout) findViewById(R.id.drawer_layout);
-        mDrawerToggle = new ActionBarDrawerToggle(
-                this,                  /* host Activity */
-                mDrawerLayout,         /* DrawerLayout object */
-                R.drawable.ic_launcher,  /* nav drawer icon to replace 'Up' caret */
-                R.string.drawer_open,  /* "open drawer" description */
-                R.string.drawer_close  /* "close drawer" description */
-        ) {
-
-            /** Called when a drawer has settled in a completely closed state. */
-            public void onDrawerClosed(View view) {
-                getActionBar().setTitle(mTitle);
-                invalidateOptionsMenu(); // creates call to onPrepareOptionsMenu()
-            }
-
-            /** Called when a drawer has settled in a completely open state. */
-            public void onDrawerOpened(View drawerView) {
-                getActionBar().setTitle(mDrawerTitle);
-                invalidateOptionsMenu(); // creates call to onPrepareOptionsMenu()
-            }
-        };
-
-        // Set the drawer toggle as the DrawerListener
-        mDrawerLayout.setDrawerListener(mDrawerToggle);
 
         getNotesFromDatabase();
 
@@ -108,7 +67,6 @@ public class MainActivity extends Activity {
             renderNotesList();
         }
 
-        getActionBar().setDisplayHomeAsUpEnabled(true);
         getActionBar().setHomeButtonEnabled(true);
     }
 
@@ -136,7 +94,6 @@ public class MainActivity extends Activity {
     @Override
     public boolean onPrepareOptionsMenu(Menu menu) {
         // If the nav drawer is open, hide action items related to the content view
-        boolean drawerOpen = mDrawerLayout.isDrawerOpen(notesListView);
         menu.findItem(R.id.action_sync).setVisible(true);
         menu.findItem(R.id.action_save).setVisible(false);
         return super.onPrepareOptionsMenu(menu);
@@ -158,6 +115,11 @@ public class MainActivity extends Activity {
 
     public void getNotesFromDatabase() {
         try {
+            mDbHelper = new NoteReaderDbHelper(getApplicationContext());
+            SQLiteDatabase mDbWritable = mDbHelper.getWritableDatabase();
+            mDbHelper.onCreate(mDbWritable);
+            mDbWritable.close();
+
             mDbHelper = new NoteReaderDbHelper(getApplicationContext());
             SQLiteDatabase mDbReadable = mDbHelper.getReadableDatabase();
 
@@ -233,17 +195,28 @@ public class MainActivity extends Activity {
         mDbWritable.close();
 
         sortNotes();
+        if (listAdapter != null) listAdapter.notifyDataSetChanged();
     }
 
     /* Override sync notes from Evernote */
     public void syncNotes() {
         showLoadingSpinner();
-        Handler handler = new Handler();
-        handler.postDelayed(new Runnable() {
-            public void run() {
-                stopLoadingSpinner();
-            }
-        }, 2000);
+
+        try {
+            mDbHelper = new NoteReaderDbHelper(getApplicationContext());
+            SQLiteDatabase mDbWritable = mDbHelper.getWritableDatabase();
+            mDbWritable.delete(NoteEntry.TABLE_NAME, null, null);
+            mDbWritable.close();
+
+            listNotebooks();
+            renderNotesList();
+        } catch (TTransportException e) {
+            Log.e("GreenDiary", "Failed syncing notes");
+            Log.e("GreenDiary", e.toString());
+            stopLoadingSpinner();
+        }
+
+        stopLoadingSpinner();
     }
 
 
@@ -289,12 +262,14 @@ public class MainActivity extends Activity {
 
     public void sortNotes() {
         // Sort the array items in descending order of created_at
-        Collections.sort(notes, new Comparator<Map<String, String>>() {
-            @Override
-            public int compare(Map<String, String> first, Map<String, String> second) {
-                return second.get("created_at").compareTo(first.get("created_at"));
-            }
-        });
+        if (!notes.isEmpty()) {
+            Collections.sort(notes, new Comparator<Map<String, String>>() {
+                @Override
+                public int compare(Map<String, String> first, Map<String, String> second) {
+                    return second.get("created_at").compareTo(first.get("created_at"));
+                }
+            });
+        }
     }
 
     public void getNotes() throws TTransportException {
@@ -358,6 +333,9 @@ public class MainActivity extends Activity {
 
     /* Creates or uses existing note from today's date */
     public void addTodayNote() {
+        if (notes.get(0) == null) return;
+        if (notes.get(0).get("created_at") == null) return;
+
         Date created_at = new Date(Long.valueOf(notes.get(0).get("created_at")));
 
         if (noteCreatedToday(created_at)) {
@@ -370,16 +348,13 @@ public class MainActivity extends Activity {
             new_note.put("title", title);
 
             notes.add(0, new_note);
+            if (listAdapter != null) listAdapter.notifyDataSetChanged();
         }
     }
 
     public void renderNotesList() {
-        if (!notes.isEmpty()) {
-            addTodayNote();
-        }
-
         listAdapter = new SimpleAdapter(getBaseContext(), notes, R.layout.note_row, new String[] {
-                "title"
+                "created_at"
             }, new int[] {
                 R.id.rowTextView
             });
@@ -396,52 +371,29 @@ public class MainActivity extends Activity {
     }
 
     private void selectNote(int position) {
-        if (position == 0 && notes.get(position).get("guid") == null) {  // Today note
-            Fragment fragment = new NoteFragment();
-            Bundle args = new Bundle();
-            fragment.setArguments(args);
+        try {
+            showLoadingSpinner();
+            String guid = notes.get(position).get("guid");
+            mEvernoteSession.getClientFactory().createNoteStoreClient().getNote(guid, true, true, false, false, new OnClientCallback<Note>() {
+                @Override
+                public void onSuccess(Note note) {
+                    stopLoadingSpinner();
 
-            // Insert the fragment by replacing any existing fragment
-            FragmentManager fragmentManager = getFragmentManager();
-            fragmentManager.beginTransaction()
-                    .replace(R.id.content_frame, fragment)
-                    .commit();
+                    Intent i = new Intent(getApplicationContext(), NoteDetailActivity.class);
+                    i.putExtra("content", note.getContent().toString());
+                    startActivity(i);
+                }
 
-            setTitle(notes.get(0).get("title"));
-        } else {
-            try {
-                showLoadingSpinner();
-                String guid = notes.get(position).get("guid");
-                mEvernoteSession.getClientFactory().createNoteStoreClient().getNote(guid, true, true, false, false, new OnClientCallback<Note>() {
-                    @Override
-                    public void onSuccess(Note note) {
-                        Fragment fragment = new NoteFragment();
-                        Bundle args = new Bundle();
-                        args.putString("content", note.getContent().toString());
-                        fragment.setArguments(args);
-
-                        // Insert the fragment by replacing any existing fragment
-                        FragmentManager fragmentManager = getFragmentManager();
-                        fragmentManager.beginTransaction()
-                                .replace(R.id.content_frame, fragment)
-                                .commit();
-
-                        setTitle(note.getTitle());
-                        stopLoadingSpinner();
-                    }
-
-                    @Override
-                    public void onException(Exception e) {
-                        Log.d("GreenDiary", "Oops");
-                    }
-                });
-                // Highlight the selected item, update the title, and close the drawer
-            } catch (TTransportException e) {
-                stopLoadingSpinner();
-                Toast.makeText(getApplicationContext(), "Error fetching note", Toast.LENGTH_LONG).show();
-            }
+                @Override
+                public void onException(Exception e) {
+                    Log.d("GreenDiary", "Oops");
+                }
+            });
+            // Highlight the selected item, update the title, and close the drawer
+        } catch (TTransportException e) {
+            stopLoadingSpinner();
+            Toast.makeText(getApplicationContext(), "Error fetching note", Toast.LENGTH_LONG).show();
         }
-        mDrawerLayout.closeDrawer(notesListView);
         notesListView.setItemChecked(position, true);
     }
 
@@ -449,9 +401,5 @@ public class MainActivity extends Activity {
     public void setTitle(CharSequence title) {
         mTitle = title;
         getActionBar().setTitle(mTitle);
-    }
-
-    public void syncNote() {
-
     }
 }

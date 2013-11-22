@@ -26,6 +26,13 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <activity
+            android:name="com.kennymeyer.greendiary.NoteDetailActivity"
+            android:configChanges="orientation|keyboardHidden|screenSize"
+            android:parentActivityName="MainActivity">
+         </activity>
+
     </application>
 
 </manifest>
